@@ -1,0 +1,96 @@
+
+<label for="DiscountCode" class="hidden-label">Discount Code</label>
+<input type="text" name="discount_code" id="DiscountCode" placeholder="Discount Code" autocorrect="off" autocapitalize="off" autofocus="">
+<button type="button" class="btn btn--bold" id="Apply_DiscountCode">Apply</button>
+<span class="success"></span>
+<span class="error"></span>
+
+{%- assign cart_variant_ids = "" -%}
+{%- assign cart_product_ids = "" -%}
+{%- assign cart_collection_ids = "" -%}
+
+{%- for item in cart_items -%}
+{%- assign cart_variant_ids = cart_variant_ids | append: item.variant.id | append: "," -%}
+{%- assign cart_product_ids = cart_product_ids | append: item.product.id | append: "," -%}
+{%- assign collection_ids = item.product.collections | map: 'id' | join: "," -%}
+{%- assign cart_collection_ids = cart_collection_ids | append: collection_ids | append: "," -%}
+{%- endfor -%}
+
+{%- assign cart_variant_ids = cart_variant_ids | split: "," | uniq -%}
+{%- assign cart_product_ids = cart_product_ids | split: "," | uniq -%}
+{%- assign cart_collection_ids = cart_collection_ids | split: "," | uniq -%}
+
+<script>
+(function() {
+    var elements = {
+        inputFieldEl: document.getElementById('DiscountCode'),
+        applyDiscountEl: document.getElementById('Apply_DiscountCode'),
+        successEl: null,
+        errorEl: null,
+        discountCodeHiddenInputEl: null
+    };
+
+    if (!elements.inputFieldEl || !elements.applyDiscountEl) return; //Do nothing if 2 main elements can't be found
+
+    elements.successEl = elements.inputFieldEl.parentNode.getElementsByClassName('success')[0];
+    elements.errorEl = elements.inputFieldEl.parentNode.getElementsByClassName('error')[0];
+
+    var validateDiscountCode = function(code, callback) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', 'https://shopifytools.cake.digital/validate-discount');
+        xhr.setRequestHeader('Content-type', 'application/json');
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState == 4 && xhr.status >= 200 && xhr.status < 300) {
+                callback(JSON.parse(xhr.responseText));
+            } else if (xhr.readyState == 4) {
+                console.error(xhr.responseText);
+            }
+        }
+        xhr.send(JSON.stringify({ 
+            shop: 'urbangifts-shop.myshopify.com', 
+            discount_code: code,
+            variant_ids: {{ cart_variant_ids | json }}.map(function(id) { return parseInt(id) }),
+            product_ids: {{ cart_product_ids | json }}.map(function(id) { return parseInt(id) }),
+            collection_ids: {{ cart_collection_ids | json }}.map(function(id) { return parseInt(id) })
+        }));
+    };
+
+    var onDiscountCodeApply = function(e) {
+        //Clear error and success messages
+        elements.successEl.innerHTML = "";
+        elements.errorEl.innerHTML = "";
+
+        var code = elements.inputFieldEl.value;
+
+        if (code.trim().length < 3) {
+            elements.errorEl.innerHTML = "Invalid discount code";
+        }
+
+        validateDiscountCode(code, function(code_valid) {
+            if (code_valid) {
+
+                if (!elements.discountCodeHiddenInputEl) {
+                    elements.discountCodeHiddenInputEl = document.createElement('input');
+                    elements.discountCodeHiddenInputEl.type = "hidden";
+                    elements.discountCodeHiddenInputEl.name = "discount";
+                    document.getElementById('main-cart-form').appendChild(elements.discountCodeHiddenInputEl);
+                }
+
+                elements.discountCodeHiddenInputEl.value = code;
+
+                elements.successEl.innerHTML = "Your discount code is valid, it will be applied at checkout";
+            } else {
+                elements.errorEl.innerHTML = "Invalid discount code";
+            }
+        });
+    }
+
+    elements.applyDiscountEl.addEventListener('click', onDiscountCodeApply);
+    elements.inputFieldEl.addEventListener('keypress', function(e) { 
+        if (e.keyCode != 13) return; //Do nothing if the key is not the 'Enter' key 
+        e.preventDefault();
+        onDiscountCodeApply();
+    })
+
+}());
+</script>
